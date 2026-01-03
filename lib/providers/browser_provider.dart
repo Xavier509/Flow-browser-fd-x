@@ -629,7 +629,7 @@ class BrowserProvider with ChangeNotifier {
       } else {
         // append encoded query
         searchQuery = finalUrl;
-        finalUrl = '${searchUrl}${Uri.encodeComponent(finalUrl)}';
+        finalUrl = '$searchUrl${Uri.encodeComponent(finalUrl)}';
       }
     } else if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
       finalUrl = 'https://$finalUrl';

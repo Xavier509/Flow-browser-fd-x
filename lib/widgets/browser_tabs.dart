@@ -3,9 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/browser_provider.dart';
 import '../providers/settings_provider.dart';
-import '../models/workspace.dart';
-import '../models/tab_group.dart';
-import 'source_viewer_dialog.dart';
 
 class BrowserTabs extends StatefulWidget {
   final WebViewController? webViewController;
@@ -20,10 +17,10 @@ class _BrowserTabsState extends State<BrowserTabs> {
   int? _draggedTabIndex;
   String? _draggedFromGroupId;
   Offset? _dragStartPosition;
-  bool _isDraggingToNewWindow = false;
+  final bool _isDraggingToNewWindow = false;
   int? _hoveredIndex;
-  bool _showInsertionIndicator = false;
-  double _insertionOffset = 0.0;
+  final bool _showInsertionIndicator = false;
+  final double _insertionOffset = 0.0;
 
   void _showTabContextMenu(BuildContext context, Offset position, int tabIndex, BrowserProvider provider) {
     final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
@@ -365,10 +362,10 @@ class _BrowserTabsState extends State<BrowserTabs> {
                         child: Text(tab.title ?? tab.url ?? 'New Tab', overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: browserProvider.currentTabIndex == idx ? Colors.white : Colors.black87, fontSize: 12)),
                       ),
                     );
-                  }).toList(),
+                  }),
               ],
             );
-          }).toList(),
+          }),
 
           // Ungrouped tabs area
           Expanded(

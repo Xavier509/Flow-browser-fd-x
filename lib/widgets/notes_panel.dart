@@ -32,7 +32,7 @@ class _NotesPanelState extends State<NotesPanel> {
       if (!m.containsKey('title') && m.containsKey('text')) {
         final txt = m['text'] ?? '';
         final lines = (txt as String).split('\n');
-        final title = lines.isNotEmpty ? (lines.first.length > 40 ? lines.first.substring(0, 40) + '...' : lines.first) : '';
+        final title = lines.isNotEmpty ? (lines.first.length > 40 ? '${lines.first.substring(0, 40)}...' : lines.first) : '';
         return {'title': title, 'content': txt, 'ts': m['ts'] ?? m['created_at'] ?? DateTime.now().toIso8601String()};
       }
       return {'title': m['title'] ?? '', 'content': m['content'] ?? m['text'] ?? '', 'ts': m['ts'] ?? m['created_at'] ?? DateTime.now().toIso8601String()};

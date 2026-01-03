@@ -232,7 +232,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
           AuthModal.showCentered(context);
           return;
         }
-        widget.onWorkspaceTap?.call();
+        widget.onWorkspaceTap.call();
       },
       borderRadius: BorderRadius.circular(8),
       child: Container(
@@ -463,14 +463,23 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             color: const Color(0xFFa855f7).withAlpha((0.3 * 255).round()),
           ),
         ),
-        child: IconButton(
-          icon: const Icon(Icons.auto_awesome),
-          color: Colors.white,
-          iconSize: 20,
-          onPressed: widget.onAITap,
-          padding: const EdgeInsets.all(8),
-          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-        ),
+        child: Builder(builder: (ctx) {
+          return IconButton(
+            icon: const Icon(Icons.auto_awesome),
+            color: Colors.white,
+            iconSize: 20,
+            onPressed: () {
+              final auth = ctx.read<AuthProvider>();
+              if (!auth.isAuthenticated) {
+                AuthModal.showCentered(ctx);
+                return;
+              }
+              widget.onAITap();
+            },
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          );
+        }),
       ),
       const SizedBox(width: 8),
       Container(
@@ -491,7 +500,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             final settings = context.read<SettingsProvider>();
             final browser = context.read<BrowserProvider>();
             final cur = browser.currentTab.url;
-            if (cur == null || cur.isEmpty || cur == 'about:blank') return;
+            if (cur.isEmpty || cur == 'about:blank') return;
             final tl = settings.translationLanguage;
             final translateUrl = 'https://translate.google.com/translate?sl=auto&tl=$tl&u=${Uri.encodeComponent(cur)}';
             if (widget.webViewController != null) {

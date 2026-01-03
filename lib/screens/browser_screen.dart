@@ -337,6 +337,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
       },
       onAITap: () {
         Navigator.pop(context);
+        final auth = context.read<AuthProvider>();
+        if (!auth.isAuthenticated) {
+          AuthModal.showCentered(context);
+          return;
+        }
         setState(() => _showAIPanel = true);
       },
       onSettingsTap: () {

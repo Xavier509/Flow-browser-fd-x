@@ -426,7 +426,7 @@ class _SettingsModalState extends State<SettingsModal> {
         ),
         value: value,
         onChanged: onChanged,
-        activeColor: AppConstants.primaryColor,
+        activeThumbColor: AppConstants.primaryColor,
         activeTrackColor: AppConstants.primaryColor.withAlpha((0.3 * 255).round()),
       ),
     );

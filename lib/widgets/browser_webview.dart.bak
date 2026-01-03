@@ -358,6 +358,7 @@ class _BrowserWebViewState extends State<BrowserWebView> {
   }
 
   Widget _buildStartPage(BrowserProvider provider, SettingsProvider settings) {
+    final quickHomepageItems = provider.getHomepageItems().isNotEmpty && settings.homepageBookmarksEnabled ? provider.getHomepageItems() : AppConstants.defaultHomepageBookmarks;
     return Container(
       decoration: settings.homepageBgColor != 0
           ? BoxDecoration(color: Color(settings.homepageBgColor))
@@ -484,171 +485,47 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                   ],
                 ),
               ),
-              // Recommended searches on the start page
-              Builder(builder: (ctx) {
-                final provider = context.read<BrowserProvider>();
-                final recs = provider.getRecommendations(limit: 6);
-                final homepageItems = provider.getHomepageItems();
-                return Column(
-                  children: [
-                    if (recs.isNotEmpty) ...[
-                      const Align(
-                        alignment: Alignment.center,
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 8.0),
-                          child: Text('Recommended for you', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: recs.map((r) {
-                          return InkWell(
-                            onTap: () => provider.navigateToUrl(r),
-                            child: Container(
-                              constraints: const BoxConstraints(minWidth: 140, maxWidth: 240),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: AppConstants.surfaceColor.withAlpha((0.9 * 255).round()),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppConstants.primaryColor.withAlpha((0.12 * 255).round())),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.trending_up, size: 18, color: AppConstants.primaryColor),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(r, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                ],
-                              ),
+              // Recommended and homepage quick links
+              Column(
+                children: [
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 20,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final u in quickHomepageItems) Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 72,
+                            height: 72,
+                            decoration: BoxDecoration(
+                              color: Color(settings.homepageAccentColor).withAlpha((0.12 * 255).round()),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Color(settings.homepageAccentColor).withAlpha((0.22 * 255).round())),
                             ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    // Homepage tiles (customizable)
-                    if (homepageItems.isNotEmpty && settings.homepageBookmarksEnabled) ...[
-                      const Align(
-                        alignment: Alignment.center,
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 8.0),
-                          child: Text('Homepage', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                      // Show homepage tiles as circular icons (Chrome-like)
-                      Wrap(
-                        spacing: 20,
-                        runSpacing: 20,
-                        children: homepageItems.map((u) {
-                          final display = Uri.tryParse(u)?.host ?? u;
-                          final title = display.replaceAll('www.', '');
-                          return GestureDetector(
-                            onTap: () => provider.navigateToUrl(u),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 72,
-                                  height: 72,
-                                  decoration: BoxDecoration(
-                                    color: Color(settings.homepageAccentColor).withAlpha((0.12 * 255).round()),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Color(settings.homepageAccentColor).withAlpha((0.22 * 255).round())),
-                                  ),
-                                  child: Center(child: Icon(Icons.language, color: Color(settings.homepageAccentColor))),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(width: 88, child: Text(title, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Color(settings.homepageAccentColor),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                            child: Center(child: Icon(Icons.language, color: Color(settings.homepageAccentColor))),
                           ),
-                          onPressed: () => _showCustomizeHomepageDialog(ctx, provider),
-                          child: const Text('Customize Homepage', style: TextStyle(color: Colors.white)),
-                        ),
+                          const SizedBox(height: 8),
+                          SizedBox(width: 88, child: Text(Uri.tryParse(u)?.host?.replaceAll('www.', '') ?? u, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
+                        ],
                       ),
                     ],
-                    if (homepageItems.isEmpty) ...[
-                      Wrap(
-                        spacing: 16,
-                        runSpacing: 16,
-                        alignment: WrapAlignment.center,
-                        children: AppConstants.defaultHomepageBookmarks.map((u) {
-                          final display = Uri.tryParse(u)?.host ?? u;
-                          final title = display.replaceAll('www.', '');
-                          return GestureDetector(
-                            onTap: () => provider.navigateToUrl(u),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 72,
-                                  height: 72,
-                                  decoration: BoxDecoration(
-                                    color: Color(settings.homepageAccentColor).withAlpha((0.12 * 255).round()),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Color(settings.homepageAccentColor).withAlpha((0.22 * 255).round())),
-                                  ),
-                                  child: Center(child: Icon(Icons.language, color: Color(settings.homepageAccentColor))),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(width: 88, child: Text(title, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
-                              ],
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: TextButton(
-                          onPressed: () => _showCustomizeHomepageDialog(ctx, provider),
-                          child: const Text('Customize Homepage'),
-                        ),
-                      ),
-                    ],
-                    Wrap(
-                      spacing: 16,
-                      runSpacing: 16,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        if (settings.vpnEnabled)
-                          _buildStatusChip(
-                            Icons.shield,
-                            'VPN Active',
-                            AppConstants.tertiaryColor,
-                          ),
-                        if (settings.proxyEnabled)
-                          _buildStatusChip(
-                            Icons.shield,
-                            'Proxy Active',
-                            Colors.green,
-                          ),
-                        _buildStatusChip(
-                          Icons.lock,
-                          'Security: ${settings.securityLevel.toUpperCase()}',
-                          AppConstants.primaryColor,
-                        ),
-                      ],
+                  ),
+                  const SizedBox(height: 12),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => _showCustomizeHomepageDialog(context, provider),
+                      child: const Text('Customize Homepage'),
                     ),
-                  ],
-                );
-              }),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -665,189 +542,192 @@ class _BrowserWebViewState extends State<BrowserWebView> {
         int selectedTab = context.read<SettingsProvider>().tabColor;
         return Dialog(
           backgroundColor: Colors.transparent,
-          child: Container(
-            width: MediaQuery.of(context).size.width < 640 ? MediaQuery.of(context).size.width * 0.92 : 560.0,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppConstants.surfaceColor,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Customize Homepage', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+          child: Builder(builder: (ctx) {
+            final dialogWidth = MediaQuery.of(ctx).size.width < 640 ? MediaQuery.of(ctx).size.width * 0.92 : 560.0;
+            return Container(
+              width: dialogWidth,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: AppConstants.surfaceColor,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Customize Homepage', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (provider.bookmarks.isNotEmpty) ...[
+                    Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom:8.0), child: Text('Bookmarks', style: TextStyle(color: AppConstants.primaryColor)))),
+                    Wrap(
+                      spacing: 8,
+                      children: provider.bookmarks.map((b) => ActionChip(label: Text(b.title), onPressed: () { ctrl.text = b.url; })).toList(),
+                    ),
+                    const SizedBox(height: 12),
                   ],
-                ),
-                const SizedBox(height: 8),
-                if (provider.bookmarks.isNotEmpty) ...[
-                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom:8.0), child: Text('Bookmarks', style: TextStyle(color: AppConstants.primaryColor)))),
-                  Wrap(
-                    spacing: 8,
-                    children: provider.bookmarks.map((b) => ActionChip(label: Text(b.title), onPressed: () { ctrl.text = b.url; })).toList(),
+                  TextField(
+                    controller: ctrl,
+                    decoration: const InputDecoration(hintText: 'Enter URL to add'),
                   ),
                   const SizedBox(height: 12),
-                ],
-                TextField(
-                  controller: ctrl,
-                  decoration: const InputDecoration(hintText: 'Enter URL to add'),
-                ),
-                const SizedBox(height: 12),
-                if (items.isNotEmpty)
-                  Column(
-                    children: items.map((u) => ListTile(
-                      title: Text(u, style: const TextStyle(color: Colors.white70)),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () {
-                          provider.removeHomepageItem(u);
-                          Navigator.of(ctx).pop();
-                          _showCustomizeHomepageDialog(context, provider);
-                        },
-                      ),
-                    )).toList(),
-                  ),
-                const Divider(),
-                Row(
-                  children: [
-                    const Text('Accent color:'),
-                    const SizedBox(width: 12),
-                    Wrap(
-                      spacing: 8,
-                      children: AppConstants.homepageAccentColors.map((c) {
-                        final isSelected = c.value == selectedColor;
-                        return GestureDetector(
-                          onTap: () {
-                            selectedColor = c.value;
-                            context.read<SettingsProvider>().setHomepageAccentColor(selectedColor);
-                            setState(() {});
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 220),
-                            width: isSelected ? 40 : 34,
-                            height: isSelected ? 40 : 34,
-                            decoration: BoxDecoration(
-                              color: c,
-                              shape: BoxShape.circle,
-                              border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(width: 18),
-                    const Spacer(),
-                    Row(
-                      children: [
-                        const Text('Dark Theme'),
-                        Switch(
-                          value: darkMode,
-                          onChanged: (v) {
-                            darkMode = v;
-                            context.read<SettingsProvider>().toggleDarkMode();
-                            setState(() {});
+                  if (items.isNotEmpty)
+                    Column(
+                      children: items.map((u) => ListTile(
+                        title: Text(u, style: const TextStyle(color: Colors.white70)),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.redAccent),
+                          onPressed: () {
+                            provider.removeHomepageItem(u);
+                            Navigator.of(ctx).pop();
+                            _showCustomizeHomepageDialog(context, provider);
                           },
                         ),
-                      ],
+                      )).toList(),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                // Background & tab color customization
-                Row(
-                  children: [
-                    const Text('Homepage background:'),
-                    const SizedBox(width: 12),
-                    Wrap(
-                      spacing: 8,
-                      children: AppConstants.homepageAccentColors.map((c) {
-                        final isSel = c.value == selectedBg;
-                        return GestureDetector(
-                          onTap: () {
-                            selectedBg = c.value;
-                            context.read<SettingsProvider>().setHomepageBgColor(selectedBg);
-                            setState(() {});
-                          },
-                          child: Container(
-                            width: isSel ? 42 : 36,
-                            height: isSel ? 42 : 36,
-                            decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
+                  const Divider(),
+                  Row(
+                    children: [
+                      const Text('Accent color:'),
+                      const SizedBox(width: 12),
+                      Wrap(
+                        spacing: 8,
+                        children: AppConstants.homepageAccentColors.map((c) {
+                          final isSelected = c.value == selectedColor;
+                          return GestureDetector(
+                            onTap: () {
+                              selectedColor = c.value;
+                              context.read<SettingsProvider>().setHomepageAccentColor(selectedColor);
+                              setState(() {});
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              width: isSelected ? 40 : 34,
+                              height: isSelected ? 40 : 34,
+                              decoration: BoxDecoration(
+                                color: c,
+                                shape: BoxShape.circle,
+                                border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(width: 18),
+                      const Spacer(),
+                      Row(
+                        children: [
+                          const Text('Dark Theme'),
+                          Switch(
+                            value: darkMode,
+                            onChanged: (v) {
+                              darkMode = v;
+                              context.read<SettingsProvider>().toggleDarkMode();
+                              setState(() {});
+                            },
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const Text('Tabs color:'),
-                    const SizedBox(width: 12),
-                    Wrap(
-                      spacing: 8,
-                      children: AppConstants.homepageAccentColors.map((c) {
-                        final isSel = c.value == selectedTab;
-                        return GestureDetector(
-                          onTap: () {
-                            selectedTab = c.value;
-                            context.read<SettingsProvider>().setTabColor(selectedTab);
-                            context.read<SettingsProvider>().setUIAccentColor(selectedTab);
-                            setState(() {});
-                          },
-                          child: Container(
-                            width: isSel ? 42 : 36,
-                            height: isSel ? 42 : 36,
-                            decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        // Reset to sensible defaults
-                        final settings = context.read<SettingsProvider>();
-                        settings.setHomepageAccentColor(AppConstants.homepageAccentColors.first.value);
-                        settings.setUIAccentColor(AppConstants.primaryColor.value);
-                        settings.setTabColor(AppConstants.primaryColor.value);
-                        settings.setHomepageBgColor(0);
-                        provider.setHomepageItems(AppConstants.defaultHomepageBookmarks);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage reset to defaults')));
-                        setState(() {});
-                      },
-                      child: const Text('Reset to defaults'),
-                    ),
-                    TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: () {
-                        final text = ctrl.text.trim();
-                        if (text.isNotEmpty) {
-                          final userId = Supabase.instance.client.auth.currentUser?.id;
-                          if (userId == null) {
-                            AuthModal.showCentered(context);
-                            return;
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Background & tab color customization
+                  Row(
+                    children: [
+                      const Text('Homepage background:'),
+                      const SizedBox(width: 12),
+                      Wrap(
+                        spacing: 8,
+                        children: AppConstants.homepageAccentColors.map((c) {
+                          final isSel = c.value == selectedBg;
+                          return GestureDetector(
+                            onTap: () {
+                              selectedBg = c.value;
+                              context.read<SettingsProvider>().setHomepageBgColor(selectedBg);
+                              setState(() {});
+                            },
+                            child: Container(
+                              width: isSel ? 42 : 36,
+                              height: isSel ? 42 : 36,
+                              decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text('Tabs color:'),
+                      const SizedBox(width: 12),
+                      Wrap(
+                        spacing: 8,
+                        children: AppConstants.homepageAccentColors.map((c) {
+                          final isSel = c.value == selectedTab;
+                          return GestureDetector(
+                            onTap: () {
+                              selectedTab = c.value;
+                              context.read<SettingsProvider>().setTabColor(selectedTab);
+                              context.read<SettingsProvider>().setUIAccentColor(selectedTab);
+                              setState(() {});
+                            },
+                            child: Container(
+                              width: isSel ? 42 : 36,
+                              height: isSel ? 42 : 36,
+                              decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          // Reset to sensible defaults
+                          final settings = context.read<SettingsProvider>();
+                          settings.setHomepageAccentColor(AppConstants.homepageAccentColors.first.value);
+                          settings.setUIAccentColor(AppConstants.primaryColor.value);
+                          settings.setTabColor(AppConstants.primaryColor.value);
+                          settings.setHomepageBgColor(0);
+                          provider.setHomepageItems(AppConstants.defaultHomepageBookmarks);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage reset to defaults')));
+                          setState(() {});
+                        },
+                        child: const Text('Reset to defaults'),
+                      ),
+                      TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          final text = ctrl.text.trim();
+                          if (text.isNotEmpty) {
+                            final userId = Supabase.instance.client.auth.currentUser?.id;
+                            if (userId == null) {
+                              AuthModal.showCentered(context);
+                              return;
+                            }
+                            provider.addHomepageItem(text);
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage updated and synced')));
                           }
-                          provider.addHomepageItem(text);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage updated and synced')));
-                        }
-                        Navigator.of(ctx).pop();
-                      },
-                      child: const Text('Save'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }),
         );
       },
     );
@@ -860,6 +740,7 @@ class _BrowserWebViewState extends State<BrowserWebView> {
         color: color.withAlpha((0.2 * 255).round()),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: color.withAlpha((0.3 * 255).round())),
+
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

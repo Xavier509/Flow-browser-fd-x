@@ -41,7 +41,7 @@ class _PerformancePageState extends State<PerformancePage> {
       } else if (await deviceInfo.deviceInfo is IosDeviceInfo) {
         final info = await deviceInfo.iosInfo;
         buf.writeln('${info.name} ${info.systemVersion}');
-        buf.writeln('${info.model}');
+        buf.writeln(info.model);
       } else {
         final info = await deviceInfo.deviceInfo;
         buf.writeln(info.toMap().entries.map((e) => '${e.key}: ${e.value}').join('\n'));
