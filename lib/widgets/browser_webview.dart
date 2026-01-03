@@ -1,0 +1,691 @@
+// widgets/browser_webview.dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher_string.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../providers/browser_provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/constants.dart';
+import 'auth_modal.dart';
+
+class BrowserWebView extends StatefulWidget {
+  final Function(WebViewController)? onWebViewCreated;
+
+  const BrowserWebView({super.key, this.onWebViewCreated});
+
+  @override
+  State<BrowserWebView> createState() => _BrowserWebViewState();
+}
+
+class _BrowserWebViewState extends State<BrowserWebView> {
+  WebViewController? _controller;
+  double _progress = 0;
+  String? _lastLoadedUrl;
+  String? _lastTabId;
+  String? _webviewError;
+  final Map<String, String> _tabCache = {}; // Cache for tab URLs
+  final Map<String, String> _titleCache = {}; // Cache for tab titles
+
+  Future<void> _tryInitController() async {
+    // Wait for the platform implementation to be registered (some Windows setups are slow)
+    final timeout = Duration(seconds: 12);
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (WebViewPlatform.instance != null) break;
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+
+    if (WebViewPlatform.instance == null) {
+      setState(() {
+        _webviewError = 'WebView platform unavailable after waiting for registration. Likely causes: missing plugin registration or WebView2 runtime not installed.';
+      });
+      return;
+    }
+
+    // Try to build the controller (with a few quick retries)
+    for (int attempt = 0; attempt < 5; attempt++) {
+      try {
+        _controller = WebViewController()
+          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..setNavigationDelegate(
+            NavigationDelegate(
+              onPageStarted: (String url) {
+                setState(() {
+                  _progress = 0;
+                  _webviewError = null;
+                });
+                final provider = context.read<BrowserProvider>();
+                provider.currentTab.isLoading = true;
+                provider.updateCurrentTab(url: url);
+              },
+              onProgress: (int progress) {
+                setState(() => _progress = progress / 100);
+              },
+              onPageFinished: (String url) {
+                setState(() => _progress = 1.0);
+                final provider = context.read<BrowserProvider>();
+                provider.currentTab.isLoading = false;
+                // Cache the URL
+                _tabCache[provider.currentTab.id] = url;
+                // Advanced ad-blocking: inject content script to remove ads and block requests
+                try {
+                  final settings = context.read<SettingsProvider>();
+                  if (settings.adBlockEnabled && _controller != null) {
+                    final blockedHostsList = AppConstants.adBlockList.map((e) => "'${e.replaceAll("'", "\\'")}'").join(', ');
+                    final js = '''(function(){
+                      try{
+                        const blocked = [${blockedHostsList}];
+                        // Override fetch to reject requests to blocked hosts
+                        const _fetch = window.fetch;
+                        window.fetch = function(input, init){
+                          try{
+                            const url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+                            for(const b of blocked) if (url && url.indexOf(b) !== -1) return Promise.reject(new Error('Blocked by Flow'));
+                          }catch(e){}
+                          return _fetch.apply(this, arguments);
+                        };
+                        // Override XHR
+                        if (window.XMLHttpRequest) {
+                          const _open = XMLHttpRequest.prototype.open;
+                          XMLHttpRequest.prototype.open = function(method, url){
+                            try{ for(const b of blocked) if (url && url.indexOf(b) !== -1) { this.abort(); return; } }catch(e){}
+                            return _open.apply(this, arguments);
+                          };
+                        }
+                        // Remove common ad nodes
+                        const selectors = ['iframe[src*="ads"]','iframe[id*="ad"]','div[class*="-ad-"]','[data-ad]','[id*="ad"]','[class*="ad-"]','[class*="ads-"]','[class*="advert"]','[class*="banner-ad"]'];
+                        selectors.forEach(s => { try{ document.querySelectorAll(s).forEach(el=>el.remove()); }catch(e){} });
+                        // Remove iframes whose src contains blocked hosts
+                        document.querySelectorAll('iframe').forEach(ifr=>{ try{ const src = ifr.src || ''; for(const b of blocked) if (src.indexOf(b) !== -1) { ifr.remove(); break; } }catch(e){} });
+                      }catch(e){}
+                    })();''';
+                    try {
+                      _controller!.runJavaScript(js);
+                    } catch (e) {
+                      debugPrint('Ad-block injection failed: $e');
+                    }
+                  }
+                } catch (e) {}
+              },
+              onWebResourceError: (WebResourceError error) {
+                setState(() {
+                  _webviewError = error.description ?? error.toString();
+                });
+                debugPrint('WebView error: ${error.description}');
+              },
+              onNavigationRequest: (request) => NavigationDecision.navigate,
+            ),
+          );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          widget.onWebViewCreated?.call(_controller!);
+        });
+        // Load current tab URL immediately for faster responsiveness
+        try {
+          final provider = context.read<BrowserProvider>();
+          final cur = provider.currentTab.url;
+          if (cur.isNotEmpty && cur != 'about:blank') {
+            _controller!.loadRequest(Uri.parse(cur));
+            _lastLoadedUrl = cur;
+            _lastTabId = provider.currentTab.id;
+          }
+        } catch (_) {}
+        return;
+      } catch (e) {
+        debugPrint('WebView controller build failed (attempt ${attempt + 1}): $e');
+        await Future.delayed(Duration(milliseconds: 250 * (attempt + 1)));
+        _controller = null;
+      }
+    }
+
+    // After retries, surface friendly error with guidance
+    setState(() {
+      _webviewError = 'WebView platform unavailable after multiple attempts. Likely causes: 1) `flutter pub get` failed or an invalid package in `pubspec.yaml`, or 2) the Microsoft Edge WebView2 runtime is not installed on Windows. Try installing WebView2, running `flutter pub get`, or use the "Open externally" option.';
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tryInitController();
+  }
+
+  @override
+  void didUpdateWidget(BrowserWebView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final browserProvider = context.read<BrowserProvider>();
+    final currentTab = browserProvider.currentTab;
+    
+    final tabChanged = _lastTabId != currentTab.id;
+    final urlChanged = currentTab.url != _lastLoadedUrl;
+    
+    if (_controller != null && (tabChanged || urlChanged) && currentTab.url != 'about:blank') {
+      _controller!.loadRequest(Uri.parse(currentTab.url));
+      _lastLoadedUrl = currentTab.url;
+      _lastTabId = currentTab.id;
+      
+      // Update title from cache if available
+      if (tabChanged && _titleCache.containsKey(currentTab.id)) {
+        currentTab.title = _titleCache[currentTab.id]!;
+      }
+    } else if (tabChanged) {
+      _lastTabId = currentTab.id;
+      _lastLoadedUrl = currentTab.url;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final browserProvider = context.watch<BrowserProvider>();
+    final settingsProvider = context.watch<SettingsProvider>();
+    final currentTab = browserProvider.currentTab;
+
+    if (currentTab.url == 'about:blank') {
+      return _buildStartPage(browserProvider, settingsProvider);
+    }
+
+    // Initialize webview with current URL on first load
+    if (_lastLoadedUrl == null && _controller != null) {
+      _controller!.loadRequest(Uri.parse(currentTab.url));
+      _lastLoadedUrl = currentTab.url;
+    }
+
+    // If the webview reported an error, show a friendly error UI with retry
+    if (_webviewError != null) {
+      final showUrl = _lastLoadedUrl ?? (currentTab.url == 'about:blank' ? null : currentTab.url);
+      return Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.red.shade900,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                'WebView Error',
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 480,
+                child: Text(
+                  'WebView platform is unavailable. This usually means the platform implementation for webview_flutter is not available or the Microsoft Edge WebView2 runtime is not installed on Windows. You can try installing WebView2, open the URL in your system browser, or retry the in-app WebView.',
+                  style: const TextStyle(color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ElevatedButton(
+                    onPressed: () async {
+                      setState(() => _webviewError = null);
+                      await _tryInitController();
+                      if (_controller != null && _lastLoadedUrl != null) {
+                        _controller!.loadRequest(Uri.parse(_lastLoadedUrl!));
+                      }
+                    },
+                    child: const Text('Retry'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      const url = 'https://developer.microsoft.com/en-us/microsoft-edge/webview2/#download-section';
+                      try { await launchUrlString(url); } catch (_) {}
+                    },
+                    child: const Text('Install WebView2'),
+                  ),
+                  if (showUrl != null) ...[
+                    ElevatedButton(
+                      onPressed: () async {
+                        try {
+                          final provider = context.read<BrowserProvider>();
+                          provider.addTab();
+                          provider.navigateToUrl(showUrl);
+                        } catch (_) {}
+                      },
+                      child: const Text('Open in Flow'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        try {
+                          await launchUrlString(showUrl);
+                        } catch (_) {}
+                      },
+                      child: const Text('Open externally'),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // If controller isn't ready yet, avoid constructing a new WebViewController
+    // (that triggers the platform assertion). Show an initializing UI instead.
+    if (_controller == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 12),
+            const Text('Initializing WebView...'),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    // Retry controller init
+                    setState(() => _webviewError = null);
+                    await _tryInitController();
+                  },
+                  child: const Text('Retry'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Open externally as a fallback
+                    final url = currentTab.url;
+                    if (url.isNotEmpty && url != 'about:blank') {
+                      try {
+                        await launchUrlString(url);
+                      } catch (_) {}
+                    }
+                  },
+                  child: const Text('Open externally'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        WebViewWidget(controller: _controller!),
+        if (_progress < 1.0)
+          LinearProgressIndicator(
+            value: _progress,
+            backgroundColor: Colors.transparent,
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              AppConstants.primaryColor,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildStartPage(BrowserProvider provider, SettingsProvider settings) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: AppConstants.backgroundGradient,
+      ),
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  gradient: AppConstants.primaryGradient,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppConstants.primaryColor.withAlpha((0.35 * 255).round()),
+                      blurRadius: 30,
+                      spreadRadius: 6,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.language,
+                  size: 44,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [
+                    AppConstants.primaryColor,
+                    AppConstants.secondaryColor,
+                    AppConstants.tertiaryColor,
+                  ],
+                ).createShader(bounds),
+                child: const Text(
+                  'Flow Browser',
+                  style: TextStyle(
+                    fontSize: 40,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Workspace: ${provider.currentWorkspace.name}',
+                style: TextStyle(
+                  color: AppConstants.primaryColor.withAlpha((0.75 * 255).round()),
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Enter a URL or search query above to start browsing',
+                style: TextStyle(
+                  color: AppConstants.primaryColor.withAlpha((0.55 * 255).round()),
+                  fontSize: 13,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              // Recommended searches on the start page
+              Builder(builder: (ctx) {
+                final provider = context.read<BrowserProvider>();
+                final recs = provider.getRecommendations(limit: 6);
+                final homepageItems = provider.getHomepageItems();
+                return Column(
+                  children: [
+                    if (recs.isNotEmpty) ...[
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                          child: Text('Recommended for you', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: recs.map((r) {
+                          return InkWell(
+                            onTap: () => provider.navigateToUrl(r),
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 140, maxWidth: 240),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppConstants.surfaceColor.withAlpha((0.9 * 255).round()),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppConstants.primaryColor.withAlpha((0.12 * 255).round())),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.trending_up, size: 18, color: AppConstants.primaryColor),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(r, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    // Homepage tiles (customizable)
+                    if (homepageItems.isNotEmpty && settings.homepageBookmarksEnabled) ...[
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                          child: Text('Homepage', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: homepageItems.map((u) => _buildHomepageTile(u, provider, settings.homepageAccentColor)).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(settings.homepageAccentColor),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          ),
+                          onPressed: () => _showCustomizeHomepageDialog(ctx, provider),
+                          child: const Text('Customize Homepage', style: TextStyle(color: Colors.white)),
+                        ),
+                      ),
+                    ],
+                    if (homepageItems.isEmpty)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () => _showCustomizeHomepageDialog(ctx, provider),
+                          child: const Text('Customize Homepage'),
+                        ),
+                      ),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        if (settings.vpnEnabled)
+                          _buildStatusChip(
+                            Icons.shield,
+                            'VPN Active',
+                            AppConstants.tertiaryColor,
+                          ),
+                        if (settings.proxyEnabled)
+                          _buildStatusChip(
+                            Icons.shield,
+                            'Proxy Active',
+                            Colors.green,
+                          ),
+                        _buildStatusChip(
+                          Icons.lock,
+                          'Security: ${settings.securityLevel.toUpperCase()}',
+                          AppConstants.primaryColor,
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showCustomizeHomepageDialog(BuildContext context, BrowserProvider provider) {
+    final TextEditingController _ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final items = provider.getHomepageItems();
+        int selectedColor = context.read<SettingsProvider>().homepageAccentColor;
+        bool darkMode = context.read<SettingsProvider>().isDarkMode;
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 560,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppConstants.surfaceColor,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Customize Homepage', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (provider.bookmarks.isNotEmpty) ...[
+                  Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(bottom:8.0), child: Text('Bookmarks', style: TextStyle(color: AppConstants.primaryColor)))),
+                  Wrap(
+                    spacing: 8,
+                    children: provider.bookmarks.map((b) => ActionChip(label: Text(b.title), onPressed: () { _ctrl.text = b.url; })).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: _ctrl,
+                  decoration: const InputDecoration(hintText: 'Enter URL to add'),
+                ),
+                const SizedBox(height: 12),
+                if (items.isNotEmpty)
+                  Column(
+                    children: items.map((u) => ListTile(
+                      title: Text(u, style: const TextStyle(color: Colors.white70)),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent),
+                        onPressed: () {
+                          provider.removeHomepageItem(u);
+                          Navigator.of(ctx).pop();
+                          _showCustomizeHomepageDialog(context, provider);
+                        },
+                      ),
+                    )).toList(),
+                  ),
+                const Divider(),
+                Row(
+                  children: [
+                    const Text('Accent color:'),
+                    const SizedBox(width: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: AppConstants.homepageAccentColors.map((c) {
+                        final isSelected = c.value == selectedColor;
+                        return GestureDetector(
+                          onTap: () {
+                            selectedColor = c.value;
+                            context.read<SettingsProvider>().setHomepageAccentColor(selectedColor);
+                            setState(() {});
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            width: isSelected ? 40 : 34,
+                            height: isSelected ? 40 : 34,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                              border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(width: 18),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        const Text('Dark Theme'),
+                        Switch(
+                          value: darkMode,
+                          onChanged: (v) {
+                            darkMode = v;
+                            context.read<SettingsProvider>().toggleDarkMode();
+                            setState(() {});
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        final text = _ctrl.text.trim();
+                        if (text.isNotEmpty) {
+                          final userId = Supabase.instance.client.auth.currentUser?.id;
+                          if (userId == null) {
+                            AuthModal.showCentered(context);
+                            return;
+                          }
+                          provider.addHomepageItem(text);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage updated and synced')));
+                        }
+                        Navigator.of(ctx).pop();
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withAlpha((0.2 * 255).round()),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withAlpha((0.3 * 255).round())),
+
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(color: color.withAlpha((0.85 * 255).round()), fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomepageTile(String url, BrowserProvider provider, int accentColor) {
+    return GestureDetector(
+      onTap: () => provider.navigateToUrl(url),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppConstants.surfaceColor.withAlpha((0.85 * 255).round()),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Color(accentColor).withAlpha((0.22 * 255).round())),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.language, size: 18, color: Color(accentColor)),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 160,
+              child: Text(
+                url,
+                style: const TextStyle(color: Colors.white),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
