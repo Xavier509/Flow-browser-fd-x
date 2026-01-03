@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/browser_provider.dart';
-import '../models/workspace.dart';
 import '../utils/constants.dart';
 
 class WorkspacesModal extends StatefulWidget {

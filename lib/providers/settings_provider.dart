@@ -19,6 +19,9 @@ class SettingsProvider with ChangeNotifier {
   String _translationLanguage = 'en';
   bool _homepageBookmarksEnabled = true;
   int _homepageAccentColor = 0xFFa855f7;
+  int _uiAccentColor = 0xFF22d3ee;
+  int _homepageBgColor = 0x00000000; // 0 = use default gradient
+  int _tabColor = 0xFF22d3ee;
   
   SettingsProvider() {
     _loadSettings();
@@ -38,6 +41,9 @@ class SettingsProvider with ChangeNotifier {
   String get translationLanguage => _translationLanguage;
   bool get homepageBookmarksEnabled => _homepageBookmarksEnabled;
   int get homepageAccentColor => _homepageAccentColor;
+  int get uiAccentColor => _uiAccentColor;
+  int get homepageBgColor => _homepageBgColor;
+  int get tabColor => _tabColor;
   
   void _loadSettings() {
     _proxyEnabled = _settingsBox.get('proxyEnabled', defaultValue: false);
@@ -53,6 +59,9 @@ class SettingsProvider with ChangeNotifier {
     _translationLanguage = _settingsBox.get('translationLanguage', defaultValue: 'en');
     _homepageBookmarksEnabled = _settingsBox.get('homepageBookmarksEnabled', defaultValue: true);
     _homepageAccentColor = _settingsBox.get('homepageAccentColor', defaultValue: 0xFFa855f7);
+    _uiAccentColor = _settingsBox.get('uiAccentColor', defaultValue: 0xFF22d3ee);
+    _homepageBgColor = _settingsBox.get('homepageBgColor', defaultValue: 0x00000000);
+    _tabColor = _settingsBox.get('tabColor', defaultValue: 0xFF22d3ee);
     notifyListeners();
   }
 
@@ -65,6 +74,24 @@ class SettingsProvider with ChangeNotifier {
   void setHomepageAccentColor(int color) {
     _homepageAccentColor = color;
     _settingsBox.put('homepageAccentColor', color);
+    notifyListeners();
+  }
+
+  void setUIAccentColor(int color) {
+    _uiAccentColor = color;
+    _settingsBox.put('uiAccentColor', color);
+    notifyListeners();
+  }
+
+  void setHomepageBgColor(int color) {
+    _homepageBgColor = color;
+    _settingsBox.put('homepageBgColor', color);
+    notifyListeners();
+  }
+
+  void setTabColor(int color) {
+    _tabColor = color;
+    _settingsBox.put('tabColor', color);
     notifyListeners();
   }
   

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 import 'auth_modal.dart';
 import '../providers/browser_provider.dart';
 import '../providers/settings_provider.dart';
@@ -55,7 +54,6 @@ class _BrowserHeaderState extends State<BrowserHeader> {
   @override
   void didUpdateWidget(covariant BrowserHeader oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Only update if the URL changed externally and text field is not focused
     final newUrl = context.read<BrowserProvider>().urlInput;
     if (_lastSetUrl != newUrl && !_urlController.selection.isValid) {
       _urlController.text = newUrl;
@@ -68,8 +66,9 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     final browserProvider = context.watch<BrowserProvider>();
     final settingsProvider = context.watch<SettingsProvider>();
     final authProvider = context.watch<AuthProvider>();
-    
-    // Only set initial URL if controller is empty or needs updating
+    final accentColor = Color(settingsProvider.uiAccentColor);
+    final accentGradient = LinearGradient(colors: [accentColor, AppConstants.secondaryColor]);
+
     if (_urlController.text.isEmpty && browserProvider.urlInput.isNotEmpty) {
       _urlController.text = browserProvider.urlInput;
       _lastSetUrl = browserProvider.urlInput;
@@ -84,46 +83,40 @@ class _BrowserHeaderState extends State<BrowserHeader> {
         color: AppConstants.surfaceColor.withAlpha((0.6 * 255).round()),
         border: Border(
           bottom: BorderSide(
-            color: AppConstants.primaryColor.withAlpha((0.3 * 255).round()),
+            color: accentColor.withAlpha((0.3 * 255).round()),
             width: 1,
           ),
         ),
       ),
       child: Row(
         children: [
-          // Mobile menu button
           if (widget.isMobile && widget.onMenuTap != null)
             IconButton(
-              icon: const Icon(Icons.menu, color: AppConstants.primaryColor),
+              icon: const Icon(Icons.menu, color: Colors.white),
               onPressed: widget.onMenuTap,
             ),
-          
-          // Logo
-          _buildLogo(),
-          
+
+          _buildLogo(accentGradient, accentColor),
+
           const SizedBox(width: 12),
-          
-          // Workspace indicator (desktop/tablet)
-          if (!widget.isMobile) _buildWorkspaceButton(browserProvider),
-          
+
+          if (!widget.isMobile) _buildWorkspaceButton(browserProvider, accentColor),
+
           const SizedBox(width: 12),
-          
-          // Navigation controls (desktop/tablet)
-          if (!widget.isMobile) _buildNavigationControls(browserProvider),
-          
+
+          if (!widget.isMobile) _buildNavigationControls(browserProvider, accentColor),
+
           const SizedBox(width: 12),
-          
-          // URL bar
-          Expanded(child: _buildUrlBar(browserProvider, settingsProvider)),
-          
+
+          Expanded(child: _buildUrlBar(browserProvider, settingsProvider, accentColor)),
+
           const SizedBox(width: 12),
-          
-          // Action buttons
-          if (!widget.isMobile) ..._buildDesktopActions(browserProvider),
-          // History / Notes / Todos icons
+
+          if (!widget.isMobile) ..._buildDesktopActions(accentColor),
+
           if (!widget.isMobile) ...[
             IconButton(
-              icon: const Icon(Icons.history, color: AppConstants.primaryColor),
+              icon: Icon(Icons.history, color: accentColor),
               onPressed: () {
                 final auth = context.read<AuthProvider>();
                 if (!auth.isAuthenticated) {
@@ -134,7 +127,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.note_alt, color: AppConstants.primaryColor),
+              icon: Icon(Icons.note_alt, color: accentColor),
               onPressed: () {
                 final auth = context.read<AuthProvider>();
                 if (!auth.isAuthenticated) {
@@ -145,7 +138,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.checklist_rtl, color: AppConstants.primaryColor),
+              icon: Icon(Icons.checklist_rtl, color: accentColor),
               onPressed: () {
                 final auth = context.read<AuthProvider>();
                 if (!auth.isAuthenticated) {
@@ -156,63 +149,59 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               },
             ),
           ],
-          
-          // Mobile more options
+
           if (widget.isMobile)
             IconButton(
-              icon: const Icon(Icons.more_vert, color: AppConstants.primaryColor),
+              icon: Icon(Icons.more_vert, color: accentColor),
               onPressed: () => setState(() => _showMoreOptions = !_showMoreOptions),
             ),
-          
-          // User menu (desktop/tablet)
-          if (!widget.isMobile) _buildUserMenu(authProvider),
+
+          if (!widget.isMobile) _buildUserMenu(authProvider, accentColor),
         ],
       ),
     );
   }
 
-  Widget _buildLogo() {
+  Widget _buildLogo(Gradient gradient, Color accentColor) {
     return Row(
       children: [
         Container(
-          width: widget.isMobile ? 32 : 40,
-          height: widget.isMobile ? 32 : 40,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: AppConstants.primaryGradient,
+            gradient: gradient,
             boxShadow: [
               BoxShadow(
-                color: AppConstants.primaryColor.withAlpha((0.5 * 255).round()),
+                color: accentColor.withAlpha((0.5 * 255).round()),
                 blurRadius: 20,
                 spreadRadius: 2,
               ),
             ],
           ),
-          child: Icon(
+          child: const Icon(
             Icons.language,
             color: Colors.white,
-            size: widget.isMobile ? 18 : 24,
+            size: 24,
           ),
         ),
-        if (!widget.isMobile) ...[
-          const SizedBox(width: 8),
-          ShaderMask(
-            shaderCallback: (bounds) => AppConstants.primaryGradient.createShader(bounds),
-            child: const Text(
-              'Flow',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
+        const SizedBox(width: 8),
+        ShaderMask(
+          shaderCallback: (bounds) => gradient.createShader(bounds),
+          child: const Text(
+            'Flow',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
           ),
-        ],
+        ),
       ],
     );
   }
 
-  Widget _buildBookmarksButton() {
+  Widget _buildBookmarksButton(Color accentColor) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey.shade800.withAlpha((0.5 * 255).round()),
@@ -222,7 +211,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
         message: 'Bookmarks',
         child: IconButton(
           icon: const Icon(Icons.bookmarks),
-          color: AppConstants.primaryColor,
+          color: accentColor,
           iconSize: 20,
           onPressed: widget.onBookmarkTap,
           padding: const EdgeInsets.all(8),
@@ -232,10 +221,10 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     );
   }
 
-  Widget _buildWorkspaceButton(BrowserProvider provider) {
+  Widget _buildWorkspaceButton(BrowserProvider provider, Color accentColor) {
     final workspace = provider.currentWorkspace;
     final icon = _getWorkspaceIcon(workspace.icon);
-    
+
     return InkWell(
       onTap: () {
         final auth = context.read<AuthProvider>();
@@ -257,12 +246,12 @@ class _BrowserHeaderState extends State<BrowserHeader> {
         ),
         child: Row(
           children: [
-            Icon(icon, size: 16, color: AppConstants.primaryColor),
+            Icon(icon, size: 16, color: accentColor),
             const SizedBox(width: 8),
             Text(
               workspace.name,
-              style: const TextStyle(
-                color: AppConstants.primaryColor,
+              style: TextStyle(
+                color: accentColor,
                 fontSize: 14,
               ),
             ),
@@ -272,7 +261,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     );
   }
 
-  Widget _buildNavigationControls(BrowserProvider provider) {
+  Widget _buildNavigationControls(BrowserProvider provider, Color accentColor) {
     return Row(
       children: [
         _buildNavButton(
@@ -281,7 +270,6 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             if (widget.webViewController != null) {
               if (await widget.webViewController!.canGoBack()) {
                 await widget.webViewController!.goBack();
-                // Force URL update after navigation
                 Future.delayed(const Duration(milliseconds: 100), () async {
                   final currentUrl = await widget.webViewController!.currentUrl();
                   if (currentUrl != null && mounted) {
@@ -294,6 +282,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             }
           },
           true,
+          accentColor,
         ),
         const SizedBox(width: 4),
         _buildNavButton(
@@ -302,7 +291,6 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             if (widget.webViewController != null) {
               if (await widget.webViewController!.canGoForward()) {
                 await widget.webViewController!.goForward();
-                // Force URL update after navigation
                 Future.delayed(const Duration(milliseconds: 100), () async {
                   final currentUrl = await widget.webViewController!.currentUrl();
                   if (currentUrl != null && mounted) {
@@ -315,6 +303,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             }
           },
           true,
+          accentColor,
         ),
         const SizedBox(width: 4),
         _buildNavButton(
@@ -322,7 +311,6 @@ class _BrowserHeaderState extends State<BrowserHeader> {
           () async {
             if (widget.webViewController != null) {
               await widget.webViewController!.reload();
-              // Force URL update after reload
               Future.delayed(const Duration(milliseconds: 100), () async {
                 final currentUrl = await widget.webViewController!.currentUrl();
                 if (currentUrl != null && mounted) {
@@ -334,20 +322,22 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             }
           },
           true,
+          accentColor,
         ),
         const SizedBox(width: 4),
         _buildNavButton(
           Icons.home,
           () => provider.goHome(),
           true,
+          accentColor,
         ),
         const SizedBox(width: 4),
-        _buildBookmarksButton(),
+        _buildBookmarksButton(accentColor),
       ],
     );
   }
 
-  Widget _buildNavButton(IconData icon, VoidCallback onPressed, bool enabled) {
+  Widget _buildNavButton(IconData icon, VoidCallback onPressed, bool enabled, Color accentColor) {
     return Container(
       decoration: BoxDecoration(
         color: AppConstants.surfaceColor.withAlpha((0.35 * 255).round()),
@@ -355,7 +345,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
       ),
       child: IconButton(
         icon: Icon(icon),
-        color: enabled ? AppConstants.primaryColor : Colors.grey,
+        color: enabled ? accentColor : Colors.grey,
         iconSize: 20,
         onPressed: enabled ? onPressed : null,
         padding: const EdgeInsets.all(8),
@@ -364,22 +354,22 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     );
   }
 
-  Widget _buildUrlBar(BrowserProvider browserProvider, SettingsProvider settingsProvider) {
+  Widget _buildUrlBar(BrowserProvider browserProvider, SettingsProvider settingsProvider, Color accentColor) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey.shade800.withAlpha((0.5 * 255).round()),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: AppConstants.primaryColor.withAlpha((0.3 * 255).round()),
+          color: accentColor.withAlpha((0.3 * 255).round()),
         ),
       ),
       child: Row(
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Icon(
               Icons.search,
-              color: AppConstants.primaryColor,
+              color: accentColor,
               size: 18,
             ),
           ),
@@ -390,7 +380,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               decoration: InputDecoration(
                 hintText: widget.isMobile ? 'URL...' : 'Enter URL or search...',
                 hintStyle: TextStyle(
-                  color: AppConstants.primaryColor.withAlpha((0.3 * 255).round()),
+                  color: accentColor.withAlpha((0.3 * 255).round()),
                 ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -400,22 +390,18 @@ class _BrowserHeaderState extends State<BrowserHeader> {
                 browserProvider.setUrlInput(value);
               },
               onSubmitted: (value) async {
-                // Show instant loading feedback
                 setState(() => _isLoadingUrl = true);
                 try {
                   browserProvider.navigateToUrl(value, settingsProvider.searchEngine);
-                  // If we have a controller, load immediately for instant feedback
                   final cur = browserProvider.currentTab.url;
-                      if (widget.webViewController != null && cur.isNotEmpty && cur != 'about:blank') {
-                        try {
-                          await widget.webViewController!.loadRequest(Uri.parse(cur));
-                        } catch (_) {}
-                      } else {
-                        // WebView controller not ready yet — let the WebView load when available.
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView initializing; content will load shortly')));
-                      }
+                  if (widget.webViewController != null && cur.isNotEmpty && cur != 'about:blank') {
+                    try {
+                      await widget.webViewController!.loadRequest(Uri.parse(cur));
+                    } catch (_) {}
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView initializing; content will load shortly')));
+                  }
                 } finally {
-                  // Reset loading state after a short delay to show the transition
                   Future.delayed(const Duration(milliseconds: 500), () {
                     if (mounted) setState(() => _isLoadingUrl = false);
                   });
@@ -423,16 +409,15 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               },
             ),
           ),
-          // Loading indicator
           if (_isLoadingUrl)
-            const Padding(
-              padding: EdgeInsets.only(right: 12),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppConstants.primaryColor),
+                  valueColor: AlwaysStoppedAnimation<Color>(accentColor),
                 ),
               ),
             ),
@@ -442,14 +427,14 @@ class _BrowserHeaderState extends State<BrowserHeader> {
               child: Row(
                 children: [
                   if (settingsProvider.vpnEnabled)
-                    const Icon(
+                    Icon(
                       Icons.shield,
                       color: AppConstants.tertiaryColor,
                       size: 16,
                     ),
                   if (settingsProvider.proxyEnabled) ...[
                     const SizedBox(width: 4),
-                    const Icon(
+                    Icon(
                       Icons.shield,
                       color: Colors.green,
                       size: 16,
@@ -463,7 +448,7 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     );
   }
 
-  List<Widget> _buildDesktopActions(BrowserProvider provider) {
+  List<Widget> _buildDesktopActions(Color accentColor) {
     return [
       Container(
         decoration: BoxDecoration(
@@ -488,7 +473,6 @@ class _BrowserHeaderState extends State<BrowserHeader> {
         ),
       ),
       const SizedBox(width: 8),
-      // Translate current page
       Container(
         decoration: BoxDecoration(
           color: AppConstants.surfaceColor.withAlpha((0.35 * 255).round()),
@@ -499,27 +483,27 @@ class _BrowserHeaderState extends State<BrowserHeader> {
           color: AppConstants.primaryColor,
           iconSize: 20,
           onPressed: () async {
-                final auth = context.read<AuthProvider>();
-                if (!auth.isAuthenticated) {
-                  AuthModal.showCentered(context);
-                  return;
-                }
-                final settings = context.read<SettingsProvider>();
-                final browser = context.read<BrowserProvider>();
-                final cur = browser.currentTab.url;
-                if (cur == null || cur.isEmpty || cur == 'about:blank') return;
-                final tl = settings.translationLanguage;
-                final translateUrl = 'https://translate.google.com/translate?sl=auto&tl=$tl&u=${Uri.encodeComponent(cur)}';
-                if (widget.webViewController != null) {
-                  try {
-                    await widget.webViewController!.loadRequest(Uri.parse(translateUrl));
-                    browser.updateCurrentTab(url: translateUrl);
-                  } catch (_) {
-                    browser.navigateToUrl(translateUrl);
-                  }
-                } else {
-                  browser.navigateToUrl(translateUrl);
-                }
+            final auth = context.read<AuthProvider>();
+            if (!auth.isAuthenticated) {
+              AuthModal.showCentered(context);
+              return;
+            }
+            final settings = context.read<SettingsProvider>();
+            final browser = context.read<BrowserProvider>();
+            final cur = browser.currentTab.url;
+            if (cur == null || cur.isEmpty || cur == 'about:blank') return;
+            final tl = settings.translationLanguage;
+            final translateUrl = 'https://translate.google.com/translate?sl=auto&tl=$tl&u=${Uri.encodeComponent(cur)}';
+            if (widget.webViewController != null) {
+              try {
+                await widget.webViewController!.loadRequest(Uri.parse(translateUrl));
+                browser.updateCurrentTab(url: translateUrl);
+              } catch (_) {
+                browser.navigateToUrl(translateUrl);
+              }
+            } else {
+              browser.navigateToUrl(translateUrl);
+            }
           },
           padding: const EdgeInsets.all(8),
           constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -531,20 +515,19 @@ class _BrowserHeaderState extends State<BrowserHeader> {
           context.read<SettingsProvider>().toggleProxy();
         },
         context.watch<SettingsProvider>().proxyEnabled,
+        accentColor,
       ),
     ];
   }
 
-  Widget _buildActionButton(IconData icon, VoidCallback onPressed, bool isActive) {
+  Widget _buildActionButton(IconData icon, VoidCallback onPressed, bool isActive, Color accentColor) {
     return Container(
       decoration: BoxDecoration(
         color: isActive
             ? Colors.green.withAlpha((0.2 * 255).round())
             : Colors.grey.shade800.withAlpha((0.5 * 255).round()),
         borderRadius: BorderRadius.circular(8),
-        border: isActive
-            ? Border.all(color: Colors.green.withAlpha((0.3 * 255).round()))
-            : null,
+        border: isActive ? Border.all(color: Colors.green.withAlpha((0.3 * 255).round())) : null,
       ),
       child: Tooltip(
         message: isActive ? 'Disable proxy' : 'Enable proxy',
@@ -553,11 +536,11 @@ class _BrowserHeaderState extends State<BrowserHeader> {
             duration: const Duration(milliseconds: 240),
             transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
             child: Icon(
-              isActive ? icon : icon,
+              icon,
               key: ValueKey<bool>(isActive),
             ),
           ),
-          color: isActive ? Colors.green : AppConstants.primaryColor,
+          color: isActive ? Colors.green : accentColor,
           iconSize: 20,
           onPressed: onPressed,
           padding: const EdgeInsets.all(8),
@@ -567,12 +550,12 @@ class _BrowserHeaderState extends State<BrowserHeader> {
     );
   }
 
-  Widget _buildUserMenu(AuthProvider authProvider) {
+  Widget _buildUserMenu(AuthProvider authProvider, Color accentColor) {
     if (!authProvider.isAuthenticated) {
       return ElevatedButton(
         onPressed: widget.onAuthTap,
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppConstants.primaryColor,
+          backgroundColor: accentColor,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),

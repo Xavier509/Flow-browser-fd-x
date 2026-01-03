@@ -222,6 +222,48 @@ class _SettingsModalState extends State<SettingsModal> {
                             );
                           }).toList(),
                         ),
+                        const SizedBox(height: 12),
+                        const Text('UI Accent Color', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          children: AppConstants.homepageAccentColors.map((c) {
+                            final isSelected = settingsProvider.uiAccentColor == c.value;
+                            return GestureDetector(
+                              onTap: () => settingsProvider.setUIAccentColor(c.value),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: c,
+                                  shape: BoxShape.circle,
+                                  border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text('Tabs Color', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          children: AppConstants.homepageAccentColors.map((c) {
+                            final isSelected = settingsProvider.tabColor == c.value;
+                            return GestureDetector(
+                              onTap: () => settingsProvider.setTabColor(c.value),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: c,
+                                  shape: BoxShape.circle,
+                                  border: isSelected ? Border.all(color: Colors.white, width: 2) : null,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
                       ],
                     ),
                   ),

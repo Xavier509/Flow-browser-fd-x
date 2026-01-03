@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../providers/browser_provider.dart';
+import '../providers/settings_provider.dart';
 import '../models/workspace.dart';
 import '../models/tab_group.dart';
 import 'source_viewer_dialog.dart';
@@ -302,6 +303,7 @@ class _BrowserTabsState extends State<BrowserTabs> {
   @override
   Widget build(BuildContext context) {
     final browserProvider = Provider.of<BrowserProvider>(context);
+    final settings = Provider.of<SettingsProvider>(context);
 
     // Get tabs that are not in any group
     final groupedTabIds = browserProvider.currentWorkspace.tabGroups
@@ -317,102 +319,50 @@ class _BrowserTabsState extends State<BrowserTabs> {
 
     return Container(
       height: 40,
-      color: Colors.grey[200],
+      color: Color(settings.tabColor).withAlpha((0.12 * 255).round()),
       child: Row(
         children: [
-          // Tab Groups (always on the left)
+          // Render simple group headers
           ...browserProvider.currentWorkspace.tabGroups.map((group) {
             final groupTabs = group.tabIds
                 .map((tabId) => browserProvider.tabs.indexWhere((tab) => tab.id == tabId))
                 .where((index) => index != -1)
                 .toList();
-
             return Row(
               children: [
-                // Group header with drag target
-                DragTarget<int>(
-                  onAcceptWithDetails: (details) {
-                    final draggedIndex = details.data;
-                    final draggedTab = browserProvider.tabs[draggedIndex];
-                    // Add tab to group
-                    browserProvider.addTabToGroup(draggedTab.id, group.id);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Tab added to ${group.name}')),
-                    );
-                  },
-                  builder: (context, candidateData, rejectedData) {
-                    final isHoveringDrop = candidateData.isNotEmpty;
-                    return GestureDetector(
-                      onTap: () => browserProvider.toggleTabGroup(group.id),
-                      child: Container(
-                        margin: const EdgeInsets.all(4),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isHoveringDrop
-                              ? Color(group.color).withAlpha((0.4 * 255).round())
-                              : Color(group.color).withAlpha((0.2 * 255).round()),
-                          border: Border.all(
-                            color: isHoveringDrop ? Color(group.color) : Color(group.color),
-                            width: isHoveringDrop ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              group.name,
-                              style: TextStyle(
-                                color: Color(group.color),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                            Icon(
-                              group.isCollapsed ? Icons.expand_more : Icons.expand_less,
-                              size: 16,
-                              color: Color(group.color),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                GestureDetector(
+                  onTap: () => browserProvider.toggleTabGroup(group.id),
+                  child: Container(
+                    margin: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Color(group.color).withAlpha((0.18 * 255).round()),
+                      border: Border.all(color: Color(group.color)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(group.name, style: TextStyle(color: Color(group.color), fontWeight: FontWeight.bold, fontSize: 12)),
+                        const SizedBox(width: 6),
+                        Icon(group.isCollapsed ? Icons.expand_more : Icons.expand_less, size: 16, color: Color(group.color)),
+                      ],
+                    ),
+                  ),
                 ),
-                // Group tabs (only show if not collapsed)
                 if (!group.isCollapsed)
-                  ...groupTabs.map((index) {
-                    final tab = browserProvider.tabs[index];
+                  ...groupTabs.map((idx) {
+                    final tab = browserProvider.tabs[idx];
                     return GestureDetector(
-                      onTap: () => browserProvider.switchTab(index),
-                      onSecondaryTapDown: (details) => _showTabContextMenu(context, details.globalPosition, index, browserProvider),
+                      onTap: () => browserProvider.switchTab(idx),
                       child: Container(
-                        width: 150,
-                        margin: const EdgeInsets.all(2),
+                        width: 140,
+                        margin: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                         decoration: BoxDecoration(
-                          color: browserProvider.currentTabIndex == index
-                              ? Colors.white
-                              : Colors.grey[300],
-                          border: Border.all(color: Color(group.color), width: 2),
+                          color: browserProvider.currentTabIndex == idx ? Color(settings.tabColor).withAlpha((0.95 * 255).round()) : Color(settings.tabColor).withAlpha((0.18 * 255).round()),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                tab.title ?? tab.url ?? 'New Tab',
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 14),
-                              onPressed: () => browserProvider.closeTab(index),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                            ),
-                          ],
-                        ),
+                        child: Text(tab.title ?? tab.url ?? 'New Tab', overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: browserProvider.currentTabIndex == idx ? Colors.white : Colors.black87, fontSize: 12)),
                       ),
                     );
                   }).toList(),
@@ -420,176 +370,36 @@ class _BrowserTabsState extends State<BrowserTabs> {
             );
           }).toList(),
 
-          // Ungrouped tabs
+          // Ungrouped tabs area
           Expanded(
-            child: Stack(
-              children: [
-                ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: ungroupedTabs.length + 1, // +1 for new tab button
-                  itemBuilder: (context, listIndex) {
-                    if (listIndex == ungroupedTabs.length) {
-                      // New Tab Button
-                      return Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue[100],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(Icons.add, size: 20),
-                          onPressed: () => browserProvider.addTab(),
-                          padding: const EdgeInsets.all(8),
-                          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                        ),
-                      );
-                    }
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: ungroupedTabs.length + 1,
+              itemBuilder: (context, listIndex) {
+                if (listIndex == ungroupedTabs.length) {
+                  return Container(
+                    margin: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: Color(settings.tabColor).withAlpha((0.22 * 255).round()), borderRadius: BorderRadius.circular(8)),
+                    child: IconButton(icon: const Icon(Icons.add, size: 20), onPressed: () => browserProvider.addTab(), padding: const EdgeInsets.all(8), constraints: const BoxConstraints(minWidth: 36, minHeight: 36)),
+                  );
+                }
 
-                    final index = ungroupedTabs[listIndex];
-                    final tab = browserProvider.tabs[index];
-                    final isDragging = _draggedTabIndex == index;
-
-                    return LongPressDraggable<int>(
-                      data: index,
-                      delay: const Duration(milliseconds: 200), // Shorter long press delay
-                      feedback: Material(
-                        child: Container(
-                          width: 150,
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withAlpha((0.3 * 255).round()),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Text(
-                            tab.title ?? tab.url ?? 'New Tab',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ),
-                      onDragStarted: () {
-                        setState(() {
-                          _draggedTabIndex = index;
-                          _dragStartPosition = null; // Will be set in onDragEnd if needed
-                        });
-                      },
-                      onDraggableCanceled: (velocity, offset) => setState(() => _draggedTabIndex = null),
-                      onDragEnd: (details) {
-                        setState(() => _draggedTabIndex = null);
-                        // Check if dragged far enough to create new window
-                        if (_dragStartPosition != null) {
-                          final distance = (details.offset - _dragStartPosition!).distance;
-                          if (distance > 200) { // Threshold for creating new window
-                            _moveTabToNewWindow(context, browserProvider, index);
-                          }
-                        }
-                      },
-                      childWhenDragging: Container(
-                        width: 150,
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[400]?.withAlpha((0.5 * 255).round()),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: DragTarget<int>(
-                        onAcceptWithDetails: (details) {
-                          final draggedIndex = details.data;
-                          if (draggedIndex != index) {
-                            // Reorder tabs
-                            final draggedTab = browserProvider.tabs[draggedIndex];
-                            browserProvider.tabs.removeAt(draggedIndex);
-                            final newIndex = draggedIndex < index ? index - 1 : index;
-                            browserProvider.tabs.insert(newIndex, draggedTab);
-                            browserProvider.reorderTabs(browserProvider.tabs);
-                          }
-                        },
-                        builder: (context, candidateData, rejectedData) {
-                          final isHoveringDrop = candidateData.isNotEmpty;
-                          return GestureDetector(
-                            onTap: () => browserProvider.switchTab(index),
-                            onSecondaryTapDown: (details) => _showTabContextMenu(context, details.globalPosition, index, browserProvider),
-                            child: Container(
-                              width: 150,
-                              margin: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: browserProvider.currentTabIndex == index
-                                    ? Colors.white
-                                    : isHoveringDrop
-                                        ? Colors.blue[100]
-                                        : Colors.grey[300],
-                                borderRadius: BorderRadius.circular(8),
-                                border: isHoveringDrop ? Border.all(color: Colors.blue, width: 2) : null,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      tab.title ?? tab.url ?? 'New Tab',
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.close, size: 16),
-                                    onPressed: () => browserProvider.closeTab(index),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-                // Drag target for creating new window
-                if (_draggedTabIndex != null)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 100,
-                    child: DragTarget<int>(
-                      onAcceptWithDetails: (details) {
-                        final draggedIndex = details.data;
-                        _moveTabToNewWindow(context, browserProvider, draggedIndex);
-                      },
-                      builder: (context, candidateData, rejectedData) {
-                        final isHovering = candidateData.isNotEmpty;
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: isHovering ? Colors.blue.withAlpha((0.3 * 255).round()) : Colors.transparent,
-                            border: Border(
-                              left: BorderSide(
-                                color: isHovering ? Colors.blue : Colors.grey,
-                                width: isHovering ? 3 : 1,
-                              ),
-                            ),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.open_in_new,
-                              color: isHovering ? Colors.blue : Colors.grey,
-                              size: 24,
-                            ),
-                          ),
-                        );
-                      },
+                final idx = ungroupedTabs[listIndex];
+                final tab = browserProvider.tabs[idx];
+                return GestureDetector(
+                  onTap: () => browserProvider.switchTab(idx),
+                  child: Container(
+                    width: 160,
+                    margin: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: browserProvider.currentTabIndex == idx ? Color(settings.tabColor).withAlpha((0.95 * 255).round()) : Color(settings.tabColor).withAlpha((0.18 * 255).round()),
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Row(children: [Expanded(child: Text(tab.title ?? tab.url ?? 'New Tab', overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: TextStyle(color: browserProvider.currentTabIndex == idx ? Colors.white : Colors.black87, fontSize: 12))), IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => browserProvider.closeTab(idx), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 20, minHeight: 20))]),
                   ),
-              ],
+                );
+              },
             ),
           ),
         ],

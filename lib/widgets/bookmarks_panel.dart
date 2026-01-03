@@ -78,30 +78,10 @@ class BookmarksPanel extends StatelessWidget {
                       tooltip: 'Add current page',
                       onPressed: () {
                         if (!authProvider.isAuthenticated) {
-                          // Show auth modal
-                          showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Sign In Required'),
-                              content: const Text('You need to be signed in to save bookmarks. Would you like to sign in or create an account?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    AuthModal.showCentered(context);
-                                  },
-                                  child: const Text('Sign In'),
-                                ),
-                              ],
-                            ),
-                          );
+                          AuthModal.showCentered(context);
                           return;
                         }
-                        
+
                         final currentUrl = provider.currentTab.url;
                         if (!provider.isBookmarked(currentUrl)) {
                           provider.addBookmark();

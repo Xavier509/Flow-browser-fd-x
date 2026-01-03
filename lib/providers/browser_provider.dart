@@ -8,8 +8,8 @@ import '../models/tab_group.dart';
 import '../utils/constants.dart';
 
 class BrowserProvider with ChangeNotifier {
-  final Box _workspacesBox = Hive.box('workspaces');
-  final Box _bookmarksBox = Hive.box('bookmarks');
+  Box? _workspacesBox;
+  Box? _bookmarksBox;
   final _uuid = const Uuid();
   
   List<Workspace> _workspaces = [];
@@ -19,6 +19,13 @@ class BrowserProvider with ChangeNotifier {
   String _urlInput = '';
   
   BrowserProvider() {
+    try {
+      if (Hive.isBoxOpen('workspaces')) _workspacesBox = Hive.box('workspaces');
+      if (Hive.isBoxOpen('bookmarks')) _bookmarksBox = Hive.box('bookmarks');
+    } catch (_) {
+      _workspacesBox = null;
+      _bookmarksBox = null;
+    }
     _loadData();
     // Attempt to sync bookmarks from Supabase on startup (non-blocking)
     Future(() => syncBookmarksFromSupabase());
@@ -51,7 +58,7 @@ class BrowserProvider with ChangeNotifier {
   // Load data from storage
   void _loadData() {
     // Load workspaces
-    final workspacesData = _workspacesBox.get('workspaces');
+    final workspacesData = _workspacesBox?.get('workspaces');
     if (workspacesData != null && workspacesData is List) {
       _workspaces = workspacesData
           .map((data) => Workspace.fromJson(Map<String, dynamic>.from(data)))
@@ -75,11 +82,11 @@ class BrowserProvider with ChangeNotifier {
           ],
         ),
       ];
-      _saveWorkspaces();
+        _saveWorkspaces();
     }
     
     // Load bookmarks
-    final bookmarksData = _bookmarksBox.get('bookmarks');
+    final bookmarksData = _bookmarksBox?.get('bookmarks');
     if (bookmarksData != null && bookmarksData is List) {
       _bookmarks = bookmarksData
           .map((data) => Bookmark.fromJson(Map<String, dynamic>.from(data)))
@@ -90,17 +97,15 @@ class BrowserProvider with ChangeNotifier {
   }
   
   void _saveWorkspaces() {
-    _workspacesBox.put(
-      'workspaces',
-      _workspaces.map((w) => w.toJson()).toList(),
-    );
+    try {
+      _workspacesBox?.put('workspaces', _workspaces.map((w) => w.toJson()).toList());
+    } catch (_) {}
   }
   
   void _saveBookmarks() {
-    _bookmarksBox.put(
-      'bookmarks',
-      _bookmarks.map((b) => b.toJson()).toList(),
-    );
+    try {
+      _bookmarksBox?.put('bookmarks', _bookmarks.map((b) => b.toJson()).toList());
+    } catch (_) {}
   }
 
   // Supabase sync for bookmarks
@@ -410,7 +415,6 @@ class BrowserProvider with ChangeNotifier {
       final Map<String, int> counts = {};
       for (final e in items) {
         final q = (e['query'] as String?) ?? _extractDomain(e['url'] ?? '');
-        if (q == null) continue;
         counts[q] = (counts[q] ?? 0) + 1;
       }
       final sorted = counts.entries.toList()..sort((a, b) => b.value.compareTo(a.value));

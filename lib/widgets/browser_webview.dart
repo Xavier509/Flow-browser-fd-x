@@ -20,6 +20,8 @@ class BrowserWebView extends StatefulWidget {
 
 class _BrowserWebViewState extends State<BrowserWebView> {
   WebViewController? _controller;
+  final TextEditingController _homepageSearchController = TextEditingController();
+  final FocusNode _homepageFocusNode = FocusNode();
   double _progress = 0;
   String? _lastLoadedUrl;
   String? _lastTabId;
@@ -148,6 +150,23 @@ class _BrowserWebViewState extends State<BrowserWebView> {
   void initState() {
     super.initState();
     _tryInitController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        final bp = context.read<BrowserProvider>();
+        bp.addListener(_syncHomepageController);
+        _homepageSearchController.text = bp.urlInput;
+      } catch (_) {}
+    });
+  }
+
+  void _syncHomepageController() {
+    try {
+      final bp = context.read<BrowserProvider>();
+      final val = bp.urlInput;
+      if (!_homepageFocusNode.hasFocus && _homepageSearchController.text != val) {
+        _homepageSearchController.text = val;
+      }
+    } catch (_) {}
   }
 
   @override
@@ -172,6 +191,21 @@ class _BrowserWebViewState extends State<BrowserWebView> {
       _lastTabId = currentTab.id;
       _lastLoadedUrl = currentTab.url;
     }
+  }
+
+  @override
+  void dispose() {
+    try {
+      final bp = context.read<BrowserProvider>();
+      bp.removeListener(_syncHomepageController);
+    } catch (_) {}
+    try {
+      _homepageSearchController.dispose();
+    } catch (_) {}
+    try {
+      _homepageFocusNode.dispose();
+    } catch (_) {}
+    super.dispose();
   }
 
   @override
@@ -325,9 +359,11 @@ class _BrowserWebViewState extends State<BrowserWebView> {
 
   Widget _buildStartPage(BrowserProvider provider, SettingsProvider settings) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: AppConstants.backgroundGradient,
-      ),
+      decoration: settings.homepageBgColor != 0
+          ? BoxDecoration(color: Color(settings.homepageBgColor))
+          : const BoxDecoration(
+              gradient: AppConstants.backgroundGradient,
+            ),
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -339,7 +375,7 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                 height: 100,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
-                  gradient: AppConstants.primaryGradient,
+                  gradient: settings.homepageAccentColor != 0 ? LinearGradient(colors: [Color(settings.homepageAccentColor), AppConstants.secondaryColor]) : AppConstants.primaryGradient,
                   boxShadow: [
                     BoxShadow(
                       color: AppConstants.primaryColor.withAlpha((0.35 * 255).round()),
@@ -356,12 +392,8 @@ class _BrowserWebViewState extends State<BrowserWebView> {
               ),
               const SizedBox(height: 24),
               ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    AppConstants.primaryColor,
-                    AppConstants.secondaryColor,
-                    AppConstants.tertiaryColor,
-                  ],
+                shaderCallback: (bounds) => LinearGradient(
+                  colors: [Color(settings.uiAccentColor), AppConstants.secondaryColor, AppConstants.tertiaryColor],
                 ).createShader(bounds),
                 child: const Text(
                   'Flow Browser',
@@ -376,20 +408,80 @@ class _BrowserWebViewState extends State<BrowserWebView> {
               Text(
                 'Workspace: ${provider.currentWorkspace.name}',
                 style: TextStyle(
-                  color: AppConstants.primaryColor.withAlpha((0.75 * 255).round()),
+                  color: Color(settings.uiAccentColor).withAlpha((0.75 * 255).round()),
                   fontSize: 16,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
-                'Enter a URL or search query above to start browsing',
+                'Enter a URL or search query',
                 style: TextStyle(
-                  color: AppConstants.primaryColor.withAlpha((0.55 * 255).round()),
+                  color: Color(settings.uiAccentColor).withAlpha((0.55 * 255).round()),
                   fontSize: 13,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
+              // A simple centered search-like UI to mimic Chrome's New Tab feel
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                constraints: const BoxConstraints(maxWidth: 720),
+                decoration: BoxDecoration(
+                  color: AppConstants.surfaceColor.withAlpha((0.5 * 255).round()),
+                  borderRadius: BorderRadius.circular(40),
+                  border: Border.all(color: Color(settings.uiAccentColor).withAlpha((0.15 * 255).round())),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.search, color: Color(settings.uiAccentColor)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _homepageSearchController,
+                        focusNode: _homepageFocusNode,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration.collapsed(hintText: 'Search or enter web address', hintStyle: TextStyle(color: Colors.white.withAlpha(160))),
+                        onChanged: (v) => provider.setUrlInput(v),
+                        onSubmitted: (value) {
+                          final q = value.trim();
+                          if (q.isEmpty) return;
+                          final isLikelyUrl = q.contains('.') && !q.contains(' ');
+                          String target;
+                          if (isLikelyUrl) {
+                            target = q.startsWith('http') ? q : 'https://$q';
+                          } else {
+                            final engine = AppConstants.searchEngines[settings.searchEngine] ?? AppConstants.searchEngines[AppConstants.defaultSearchEngine]!;
+                            target = '${engine}${Uri.encodeComponent(q)}';
+                          }
+                          provider.navigateToUrl(target);
+                          _homepageSearchController.clear();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Color(settings.homepageAccentColor)),
+                      onPressed: () {
+                        final text = _homepageSearchController.text.trim();
+                        if (text.isEmpty) return;
+                        final isLikelyUrl = text.contains('.') && !text.contains(' ');
+                        String target;
+                        if (isLikelyUrl) {
+                          target = text.startsWith('http') ? text : 'https://$text';
+                        } else {
+                          final engine = AppConstants.searchEngines[settings.searchEngine] ?? AppConstants.searchEngines[AppConstants.defaultSearchEngine]!;
+                          target = '${engine}${Uri.encodeComponent(text)}';
+                        }
+                        provider.navigateToUrl(target);
+                        _homepageSearchController.clear();
+                      },
+                      child: const Text('Go'),
+                    ),
+                  ],
+                ),
+              ),
               // Recommended searches on the start page
               Builder(builder: (ctx) {
                 final provider = context.read<BrowserProvider>();
@@ -399,9 +491,9 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                   children: [
                     if (recs.isNotEmpty) ...[
                       const Align(
-                        alignment: Alignment.centerLeft,
+                        alignment: Alignment.center,
                         child: Padding(
-                          padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                          padding: EdgeInsets.only(bottom: 8.0),
                           child: Text('Recommended for you', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
@@ -436,16 +528,40 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                     // Homepage tiles (customizable)
                     if (homepageItems.isNotEmpty && settings.homepageBookmarksEnabled) ...[
                       const Align(
-                        alignment: Alignment.centerLeft,
+                        alignment: Alignment.center,
                         child: Padding(
-                          padding: EdgeInsets.only(left: 8.0, bottom: 8.0),
+                          padding: EdgeInsets.only(bottom: 8.0),
                           child: Text('Homepage', style: TextStyle(fontWeight: FontWeight.bold)),
                         ),
                       ),
+                      // Show homepage tiles as circular icons (Chrome-like)
                       Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: homepageItems.map((u) => _buildHomepageTile(u, provider, settings.homepageAccentColor)).toList(),
+                        spacing: 20,
+                        runSpacing: 20,
+                        children: homepageItems.map((u) {
+                          final display = Uri.tryParse(u)?.host ?? u;
+                          final title = display.replaceAll('www.', '');
+                          return GestureDetector(
+                            onTap: () => provider.navigateToUrl(u),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: Color(settings.homepageAccentColor).withAlpha((0.12 * 255).round()),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Color(settings.homepageAccentColor).withAlpha((0.22 * 255).round())),
+                                  ),
+                                  child: Center(child: Icon(Icons.language, color: Color(settings.homepageAccentColor))),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(width: 88, child: Text(title, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
                       ),
                       const SizedBox(height: 16),
                       const SizedBox(height: 12),
@@ -461,14 +577,44 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                         ),
                       ),
                     ],
-                    if (homepageItems.isEmpty)
-                      Align(
-                        alignment: Alignment.centerRight,
+                    if (homepageItems.isEmpty) ...[
+                      Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        alignment: WrapAlignment.center,
+                        children: AppConstants.defaultHomepageBookmarks.map((u) {
+                          final display = Uri.tryParse(u)?.host ?? u;
+                          final title = display.replaceAll('www.', '');
+                          return GestureDetector(
+                            onTap: () => provider.navigateToUrl(u),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 72,
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    color: Color(settings.homepageAccentColor).withAlpha((0.12 * 255).round()),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Color(settings.homepageAccentColor).withAlpha((0.22 * 255).round())),
+                                  ),
+                                  child: Center(child: Icon(Icons.language, color: Color(settings.homepageAccentColor))),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(width: 88, child: Text(title, style: const TextStyle(color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
                         child: TextButton(
                           onPressed: () => _showCustomizeHomepageDialog(ctx, provider),
                           child: const Text('Customize Homepage'),
                         ),
                       ),
+                    ],
                     Wrap(
                       spacing: 16,
                       runSpacing: 16,
@@ -512,6 +658,8 @@ class _BrowserWebViewState extends State<BrowserWebView> {
         final items = provider.getHomepageItems();
         int selectedColor = context.read<SettingsProvider>().homepageAccentColor;
         bool darkMode = context.read<SettingsProvider>().isDarkMode;
+        int selectedBg = context.read<SettingsProvider>().homepageBgColor;
+        int selectedTab = context.read<SettingsProvider>().tabColor;
         return Dialog(
           backgroundColor: Colors.transparent,
           child: Container(
@@ -605,9 +753,75 @@ class _BrowserWebViewState extends State<BrowserWebView> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                // Background & tab color customization
+                Row(
+                  children: [
+                    const Text('Homepage background:'),
+                    const SizedBox(width: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: AppConstants.homepageAccentColors.map((c) {
+                        final isSel = c.value == selectedBg;
+                        return GestureDetector(
+                          onTap: () {
+                            selectedBg = c.value;
+                            context.read<SettingsProvider>().setHomepageBgColor(selectedBg);
+                            setState(() {});
+                          },
+                          child: Container(
+                            width: isSel ? 42 : 36,
+                            height: isSel ? 42 : 36,
+                            decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Text('Tabs color:'),
+                    const SizedBox(width: 12),
+                    Wrap(
+                      spacing: 8,
+                      children: AppConstants.homepageAccentColors.map((c) {
+                        final isSel = c.value == selectedTab;
+                        return GestureDetector(
+                          onTap: () {
+                            selectedTab = c.value;
+                            context.read<SettingsProvider>().setTabColor(selectedTab);
+                            context.read<SettingsProvider>().setUIAccentColor(selectedTab);
+                            setState(() {});
+                          },
+                          child: Container(
+                            width: isSel ? 42 : 36,
+                            height: isSel ? 42 : 36,
+                            decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: isSel ? Border.all(color: Colors.white, width: 2) : null),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    TextButton(
+                      onPressed: () {
+                        // Reset to sensible defaults
+                        final settings = context.read<SettingsProvider>();
+                        settings.setHomepageAccentColor(AppConstants.homepageAccentColors.first.value);
+                        settings.setUIAccentColor(AppConstants.primaryColor.value);
+                        settings.setTabColor(AppConstants.primaryColor.value);
+                        settings.setHomepageBgColor(0);
+                        provider.setHomepageItems(AppConstants.defaultHomepageBookmarks);
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Homepage reset to defaults')));
+                        setState(() {});
+                      },
+                      child: const Text('Reset to defaults'),
+                    ),
                     TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
                     const SizedBox(width: 8),
                     ElevatedButton(
