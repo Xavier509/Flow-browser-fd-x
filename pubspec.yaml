@@ -17,7 +17,7 @@ dependencies:
   
   # Web View for browser functionality
   webview_all: ^0.5.2
-  
+
   # State Management
   provider: ^6.1.1
   get: ^4.6.6
