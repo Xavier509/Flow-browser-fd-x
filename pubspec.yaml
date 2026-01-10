@@ -16,6 +16,7 @@ dependencies:
   google_fonts: ^6.1.0
   
   # Web View for browser functionality
+  webview_cef: ^0.2.2
   webview_all: ^0.5.2
 
   # State Management
